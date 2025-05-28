@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { AuthController } from '../controllers/authController';
 import { authMiddleware } from '../middleware/authMiddleware';
-import { ILoginRequest, IAuthResponse } from '../types';
+import { ILoginRequest, IAuthResponse, ISignupRequest } from '../types/index';
 
 // You'll need to define or import AuthRequest type
 interface AuthRequest extends Request {
@@ -18,6 +18,18 @@ router.post(
             await AuthController.login(req, res);
         } catch (error) {
             console.error('Login error:', error);
+            next(error);
+        }
+    }
+);
+
+router.post(
+    '/signup',
+    async (req: Request<{}, {}, ISignupRequest>, res: Response<IAuthResponse>, next: NextFunction) => {
+        try {
+            await AuthController.signup(req, res);
+        } catch (error) {
+            console.error('Signup error:', error);
             next(error);
         }
     }

@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { User } from '../models/User';
 import { hashPassword, comparePassword } from '../utils/hashPassword';
 import { generateToken } from '../utils/generateToken';
-import { ISignupRequest, ILoginRequest, IAuthResponse } from '../types';
+import { ISignupRequest, ILoginRequest, IAuthResponse } from '../types/index';
 
 export class AuthController {
   static async signup(req: Request<{}, IAuthResponse, ISignupRequest>, res: Response<IAuthResponse>) {

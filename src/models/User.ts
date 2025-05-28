@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import { IUser } from '../types';
+import { IUser } from '../types/index';
 
 interface IUserDocument extends Omit<IUser, '_id'>, Document {
   _id: Types.ObjectId;

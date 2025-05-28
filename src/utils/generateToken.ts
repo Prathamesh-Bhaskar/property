@@ -1,5 +1,5 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { IUser } from '../types';
+import { IUser } from '../types/index';
 
 export const generateToken = (user: IUser): string => {
   const payload = {

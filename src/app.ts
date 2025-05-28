@@ -2,14 +2,17 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { connectDB } from './database/connection';
 import authRoutes from './routes/authRoutes';
+import { connectDB } from './database/connection';
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:3000"
+}));
+;
 
 // Rate limiting
 const limiter = rateLimit({
