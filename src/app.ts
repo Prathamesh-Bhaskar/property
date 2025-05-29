@@ -1,8 +1,14 @@
+// Add this import with your other imports:
+import property from './routes/propertyRoutes';
+
+// Your complete updated app.ts should look like this:
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes';
+import propertyRoutes from './routes/propertyRoutes';
 import { connectDB } from './database/connection';
 
 const app = express();
@@ -12,7 +18,6 @@ app.use(helmet());
 app.use(cors({
   origin: "http://localhost:3000"
 }));
-;
 
 // Rate limiting
 const limiter = rateLimit({
@@ -28,6 +33,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/properties', propertyRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {
