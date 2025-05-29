@@ -9,6 +9,7 @@ import favoriteRoutes from './routes/favoriteRoutes';
 import cacheRoutes from './routes/cacheRoutes';
 import { connectDB } from './database/connection';
 import { redisClient } from './cache/redisClient';
+import 'dotenv/config'
 
 const app = express();
 

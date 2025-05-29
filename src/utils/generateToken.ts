@@ -1,5 +1,6 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { IUser } from '../types/index';
+import 'dotenv/config'
 
 export const generateToken = (user: IUser): string => {
   const payload = {

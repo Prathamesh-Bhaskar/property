@@ -1,5 +1,7 @@
 // src/cache/redisClient.ts
 import Redis from 'ioredis';
+import 'dotenv/config'
+import { error } from 'console';
 
 class RedisClient {
     private client: Redis | null = null;
@@ -16,7 +18,11 @@ class RedisClient {
 
     public async connect(): Promise<void> {
         try {
-            const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+            const redisUrl = process.env.REDIS_URL
+            if(!redisUrl)
+            {
+                throw error
+            }
 
             this.client = new Redis(redisUrl, {
                 maxRetriesPerRequest: 3,
