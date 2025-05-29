@@ -1,6 +1,7 @@
 // src/controllers/propertyController.ts
 import { Request, Response } from 'express';
 import { Property } from '../models/Property';
+import { CacheService } from '../cache/cacheService';
 import {
     ICreatePropertyRequest,
     IUpdatePropertyRequest,
@@ -55,14 +56,23 @@ export class PropertyController {
 
             await property.save();
 
+            const propertyResponse = {
+                ...property.toJSON(),
+                _id: property._id.toString(),
+                createdBy: property.createdBy?.toString() || ""
+            };
+
+            // Cache the new property
+            await CacheService.cacheProperty(propertyResponse);
+            
+            // Invalidate related caches
+            await CacheService.invalidatePropertySearches();
+            await CacheService.invalidateUserProperties(authReq.user.id);
+
             res.status(201).json({
                 success: true,
                 message: 'Property created successfully',
-                property: {
-                    ...property.toJSON(),
-                    _id: property._id.toString(),
-                    createdBy: property.createdBy?.toString() || ""
-                }
+                property: propertyResponse
             });
 
         } catch (error: any) {
@@ -104,6 +114,13 @@ export class PropertyController {
                 listedBy,
                 search
             } = req.query;
+
+            // Try to get from cache first
+            const cachedResult = await CacheService.getCachedPropertySearch(req.query);
+            if (cachedResult) {
+                console.log('Returning cached property search results');
+                return res.json(cachedResult);
+            }
 
             // Build filter object
             const filter: any = {};
@@ -151,7 +168,7 @@ export class PropertyController {
 
             const totalPages = Math.ceil(total / Number(limit));
 
-            res.json({
+            const response = {
                 success: true,
                 message: 'Properties retrieved successfully',
                 properties: properties.map(p => {
@@ -166,7 +183,22 @@ export class PropertyController {
                 page: Number(page),
                 limit: Number(limit),
                 totalPages
-            });
+            };
+
+            // Cache the search results
+            await CacheService.cachePropertySearch(req.query, response);
+
+            // Cache individual properties
+            for (const property of properties) {
+                const propertyObj = {
+                    ...property.toJSON(),
+                    _id: property._id.toString(),
+                    createdBy: property.createdBy ? property.createdBy.toString() : ""
+                };
+                await CacheService.cacheProperty(propertyObj);
+            }
+
+            res.json(response);
 
         } catch (error) {
             console.error('Get properties error:', error);
@@ -181,6 +213,17 @@ export class PropertyController {
         try {
             const propertyId = req.params.id;
 
+            // Try to get from cache first
+            const cachedProperty = await CacheService.getCachedProperty(propertyId);
+            if (cachedProperty) {
+                console.log('Returning cached property');
+                return res.json({
+                    success: true,
+                    message: 'Property retrieved successfully',
+                    property: cachedProperty
+                });
+            }
+
             const property = await Property.findById(propertyId)
                 .populate('createdBy', 'username email');
 
@@ -191,14 +234,19 @@ export class PropertyController {
                 });
             }
 
+            const propertyResponse = {
+                ...property.toJSON(),
+                _id: property._id.toString(),
+                createdBy: property.createdBy ? property.createdBy.toString() : ""
+            };
+
+            // Cache the property
+            await CacheService.cacheProperty(propertyResponse);
+
             res.json({
                 success: true,
                 message: 'Property retrieved successfully',
-                property: {
-                    ...property.toJSON(),
-                    _id: property._id.toString(),
-                    createdBy: property.createdBy ? property.createdBy.toString() : ""
-                }
+                property: propertyResponse
             });
 
         } catch (error) {
@@ -245,14 +293,21 @@ export class PropertyController {
                 });
             }
 
+            const propertyResponse = {
+                ...updatedProperty.toJSON(),
+                _id: updatedProperty._id.toString(),
+                createdBy: updatedProperty.createdBy ? updatedProperty.createdBy.toString() : ""
+            };
+
+            // Update cache and invalidate related caches
+            await CacheService.cacheProperty(propertyResponse);
+            await CacheService.invalidatePropertySearches();
+            await CacheService.invalidateUserProperties(authReq.user.id);
+
             res.json({
                 success: true,
                 message: 'Property updated successfully',
-                property: {
-                    ...updatedProperty.toJSON(),
-                    _id: updatedProperty._id.toString(),
-                    createdBy: updatedProperty.createdBy ? updatedProperty.createdBy.toString() : ""
-                }
+                property: propertyResponse
             });
 
         } catch (error: any) {
@@ -284,6 +339,7 @@ export class PropertyController {
     static async deleteProperty(req: Request, res: Response<IPropertyResponse>) {
         try {
             const propertyId = req.params.id;
+            const authReq = req as AuthRequest;
 
             const deletedProperty = await Property.findByIdAndDelete(propertyId);
 
@@ -293,6 +349,10 @@ export class PropertyController {
                     message: 'Property not found'
                 });
             }
+
+            // Invalidate all related caches
+            await CacheService.invalidateProperty(propertyId);
+            await CacheService.invalidateUserProperties(authReq.user.id);
 
             res.json({
                 success: true,
@@ -325,6 +385,17 @@ export class PropertyController {
                 limit = 10
             } = req.query;
 
+            // Try to get from cache first
+            const cachedResult = await CacheService.getCachedUserProperties(
+                authReq.user.id, 
+                Number(page), 
+                Number(limit)
+            );
+            if (cachedResult) {
+                console.log('Returning cached user properties');
+                return res.json(cachedResult);
+            }
+
             const skip = (Number(page) - 1) * Number(limit);
 
             const [properties, total] = await Promise.all([
@@ -337,7 +408,7 @@ export class PropertyController {
 
             const totalPages = Math.ceil(total / Number(limit));
 
-            res.json({
+            const response = {
                 success: true,
                 message: 'User properties retrieved successfully',
                 properties: properties.map(p => {
@@ -352,7 +423,27 @@ export class PropertyController {
                 page: Number(page),
                 limit: Number(limit),
                 totalPages
-            });
+            };
+
+            // Cache the results
+            await CacheService.cacheUserProperties(
+                authReq.user.id, 
+                Number(page), 
+                Number(limit), 
+                response
+            );
+
+            // Cache individual properties
+            for (const property of properties) {
+                const propertyObj = {
+                    ...property.toJSON(),
+                    _id: property._id.toString(),
+                    createdBy: property.createdBy ? property.createdBy.toString() : ""
+                };
+                await CacheService.cacheProperty(propertyObj);
+            }
+
+            res.json(response);
 
         } catch (error) {
             console.error('Get user properties error:', error);

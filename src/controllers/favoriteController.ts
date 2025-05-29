@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { Favorite } from '../models/Favorite';
 import { Property } from '../models/Property';
+import { CacheService } from '../cache/cacheService';
 import {
     ICreateFavoriteRequest,
     IUpdateFavoriteRequest,
@@ -40,13 +41,28 @@ export class FavoriteController {
                 });
             }
 
-            // Check if already favorited
+            // Check cache for existing favorite first
+            const cachedStatus = await CacheService.getCachedFavoriteStatus(authReq.user.id, propertyId);
+            if (cachedStatus && cachedStatus.isFavorited) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Property is already in your favorites'
+                });
+            }
+
+            // Check if already favorited in database
             const existingFavorite = await Favorite.findOne({
                 userId: authReq.user.id,
                 propertyId: propertyId
             });
 
             if (existingFavorite) {
+                // Update cache with correct status
+                await CacheService.cacheFavoriteStatus(authReq.user.id, propertyId, {
+                    isFavorited: true,
+                    favoriteId: existingFavorite._id.toString()
+                });
+
                 return res.status(400).json({
                     success: false,
                     message: 'Property is already in your favorites'
@@ -68,20 +84,29 @@ export class FavoriteController {
                 .populate('propertyId', 'id title type price state city areaSqFt bedrooms bathrooms listingType')
                 .populate('userId', 'username email');
 
+            const favoriteResponse = {
+                _id: populatedFavorite?._id.toString(),
+                userId: populatedFavorite?.userId.toString() || "",
+                propertyId: populatedFavorite?.propertyId.toString() || "",
+                notes: populatedFavorite?.notes,
+                tags: populatedFavorite?.tags,
+                createdAt: populatedFavorite?.createdAt,
+                updatedAt: populatedFavorite?.updatedAt,
+                property: populatedFavorite?.propertyId as any,
+                user: populatedFavorite?.userId as any
+            };
+
+            // Update caches
+            await CacheService.cacheFavoriteStatus(authReq.user.id, propertyId, {
+                isFavorited: true,
+                favoriteId: favorite._id.toString()
+            });
+            await CacheService.invalidateFavorites(authReq.user.id);
+
             res.status(201).json({
                 success: true,
                 message: 'Property added to favorites successfully',
-                favorite: {
-                    _id: populatedFavorite?._id.toString(),
-                    userId: populatedFavorite?.userId.toString() || "",
-                    propertyId: populatedFavorite?.propertyId.toString() || "",
-                    notes: populatedFavorite?.notes,
-                    tags: populatedFavorite?.tags,
-                    createdAt: populatedFavorite?.createdAt,
-                    updatedAt: populatedFavorite?.updatedAt,
-                    property: populatedFavorite?.propertyId as any,
-                    user: populatedFavorite?.userId as any
-                }
+                favorite: favoriteResponse
             });
 
         } catch (error: any) {
@@ -135,6 +160,12 @@ export class FavoriteController {
                 });
             }
 
+            // Update caches
+            await CacheService.cacheFavoriteStatus(authReq.user.id, propertyId, {
+                isFavorited: false
+            });
+            await CacheService.invalidateFavorites(authReq.user.id);
+
             res.json({
                 success: true,
                 message: 'Property removed from favorites successfully'
@@ -171,6 +202,19 @@ export class FavoriteController {
                 tags,
                 sortBy = 'newest'
             } = req.query;
+
+            // Try to get from cache first (only for simple queries without search/tags filters)
+            if (!search && !tags) {
+                const cachedResult = await CacheService.getCachedUserFavorites(
+                    authReq.user.id,
+                    Number(page),
+                    Number(limit)
+                );
+                if (cachedResult) {
+                    console.log('Returning cached user favorites');
+                    return res.json(cachedResult);
+                }
+            }
 
             // Build filter
             const filter: any = { userId: authReq.user.id };
@@ -301,7 +345,7 @@ export class FavoriteController {
                 user: fav.user
             }));
 
-            res.json({
+            const response = {
                 success: true,
                 message: 'Favorites retrieved successfully',
                 favorites: formattedFavorites,
@@ -309,7 +353,19 @@ export class FavoriteController {
                 page: Number(page),
                 limit: Number(limit),
                 totalPages
-            });
+            };
+
+            // Cache the results only for simple queries
+            if (!search && !tags) {
+                await CacheService.cacheUserFavorites(
+                    authReq.user.id,
+                    Number(page),
+                    Number(limit),
+                    response
+                );
+            }
+
+            res.json(response);
 
         } catch (error) {
             console.error('Get user favorites error:', error);
@@ -346,20 +402,25 @@ export class FavoriteController {
                 });
             }
 
+            const favoriteResponse = {
+                _id: updatedFavorite._id.toString(),
+                userId: updatedFavorite.userId.toString(),
+                propertyId: updatedFavorite.propertyId.toString(),
+                notes: updatedFavorite.notes,
+                tags: updatedFavorite.tags,
+                createdAt: updatedFavorite.createdAt,
+                updatedAt: updatedFavorite.updatedAt,
+                property: updatedFavorite.propertyId as any,
+                user: updatedFavorite.userId as any
+            };
+
+            // Invalidate related caches
+            await CacheService.invalidateFavorites(authReq.user.id);
+
             res.json({
                 success: true,
                 message: 'Favorite updated successfully',
-                favorite: {
-                    _id: updatedFavorite._id.toString(),
-                    userId: updatedFavorite.userId.toString(),
-                    propertyId: updatedFavorite.propertyId.toString(),
-                    notes: updatedFavorite.notes,
-                    tags: updatedFavorite.tags,
-                    createdAt: updatedFavorite.createdAt,
-                    updatedAt: updatedFavorite.updatedAt,
-                    property: updatedFavorite.propertyId as any,
-                    user: updatedFavorite.userId as any
-                }
+                favorite: favoriteResponse
             });
 
         } catch (error: any) {
@@ -393,16 +454,41 @@ export class FavoriteController {
             const { propertyId } = req.params;
             const authReq = req as AuthRequest;
 
+            // Try to get from cache first
+            const cachedStatus = await CacheService.getCachedFavoriteStatus(authReq.user.id, propertyId);
+            if (cachedStatus) {
+                console.log('Returning cached favorite status');
+                return res.json({
+                    success: true,
+                    message: 'Favorite status retrieved',
+                    isFavorited: cachedStatus.isFavorited,
+                    favoriteId: cachedStatus.favoriteId || null
+                });
+            }
+
             const favorite = await Favorite.findOne({
                 userId: authReq.user.id,
                 propertyId: propertyId
             });
 
+            const status = {
+                isFavorited: !!favorite,
+                favoriteId: favorite?._id.toString() || null
+            };
+
+            // Cache the status
+            const cacheStatus: { isFavorited: boolean; favoriteId?: string } = {
+                isFavorited: status.isFavorited
+            };
+            if (status.favoriteId) {
+                cacheStatus.favoriteId = status.favoriteId;
+            }
+            await CacheService.cacheFavoriteStatus(authReq.user.id, propertyId, cacheStatus);
+
             res.json({
                 success: true,
                 message: 'Favorite status retrieved',
-                isFavorited: !!favorite,
-                favoriteId: favorite?._id.toString() || null
+                ...status
             });
 
         } catch (error: any) {
