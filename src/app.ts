@@ -1,14 +1,11 @@
-// Add this import with your other imports:
-import property from './routes/propertyRoutes';
-
-// Your complete updated app.ts should look like this:
-
+// src/app.ts
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes';
 import propertyRoutes from './routes/propertyRoutes';
+import favoriteRoutes from './routes/favoriteRoutes';
 import { connectDB } from './database/connection';
 
 const app = express();
@@ -34,6 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/properties', propertyRoutes);
+app.use('/api/favorites', favoriteRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {

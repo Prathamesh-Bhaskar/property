@@ -124,3 +124,51 @@ export interface IPropertyResponse {
   limit?: number;
   totalPages?: number;
 }
+
+// Add these interfaces to your existing src/types/index.ts file
+
+export interface IFavorite {
+  _id?: string;
+  userId: string;
+  propertyId: string;
+  notes?: string;
+  tags?: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface ICreateFavoriteRequest {
+  propertyId: string;
+  notes?: string;
+  tags?: string[];
+}
+
+export interface IUpdateFavoriteRequest {
+  notes?: string;
+  tags?: string[];
+}
+
+export interface IFavoriteQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  tags?: string;
+  sortBy?: 'newest' | 'oldest' | 'property_name';
+}
+
+export interface IFavoriteResponse {
+  success: boolean;
+  message: string;
+  favorite?: IFavorite & {
+    property?: IProperty;
+    user?: Omit<IUser, 'password'>;
+  };
+  favorites?: Array<IFavorite & {
+    property?: IProperty;
+    user?: Omit<IUser, 'password'>;
+  }>;
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
+}
